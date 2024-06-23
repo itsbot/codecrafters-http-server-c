@@ -7,6 +7,11 @@
 #include <errno.h>
 #include <unistd.h>
 
+#define BUFFER_SIZE 1024
+// Response strings
+char *response_200 = "HTTP/1.1 200 OK\r\n\r\n";
+char *response_404 = "HTTP/1.1 404 Not Found\r\n\r\n";
+
 int main() {
 	// Disable output buffering
 	setbuf(stdout, NULL);
@@ -55,10 +60,34 @@ int main() {
 	
 	int fd = accept(server_fd, (struct sockaddr *) &client_addr, &client_addr_len);
 	printf("Client connected\n");
-	char *response = "HTTP/1.1 200 OK\r\n\r\n";
-	send(fd, response, strlen(response), 0);
 	
-	close(server_fd);
+	//send(fd, response_200, strlen(response_200), 0);
 
+	char request[BUFFER_SIZE];
+	int bytesReceived = recv(fd, request, BUFFER_SIZE - 1, 0);
+	if (bytesReceived == -1) {
+		printf("Receive failed: %s\n", strerror(errno));
+		return 1;
+	}
+	request[bytesReceived] = '\0';
+	printf("Request: %s\n", request);
+
+	// Extract path from request
+	char *request_path = strtok(request, " ");
+	request_path = strtok(NULL, " ");
+
+	// Check if path is valid
+	if (strcmp(request_path, "/") == 0) {
+		// valid
+		printf("Valid path\n");
+		send(fd, response_200, strlen(response_200), 0);
+	}
+	else {
+		// invalid
+		printf("Invalid path\n");
+		send(fd, response_404, strlen(response_404), 0);
+	}
+
+	close(server_fd);
 	return 0;
 }
