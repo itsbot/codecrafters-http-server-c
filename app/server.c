@@ -78,15 +78,27 @@ int handleClient(int client_fd) {
 		return -1;
 	}
 	request[bytesReceived] = '\0';
+	printf("********************\n");
+	printf("Received request:\n%s", request);
+	printf("********************\n");
 	return parseRequest(client_fd, request);
 }
 
 int parseRequest(int client_fd, char* request) {
-	// Extract path from request
-	char *request_path = strtok(request, " ");
-	request_path = strtok(NULL, " ");
+	// Extract from request
+	char *request_method = strtok(request, " ");
+	char *request_path = strtok(NULL, " ");
+	char *request_version = strtok(NULL, "\r\n");
+	//char *request_host = strtok(NULL, "\r\n");
+	//char *request_agent = strtok(NULL, "\r\n");
+	//request_path = strtok(NULL, "\r\n");
+	printf("Request method: %s\n", request_method);
 	printf("Request path: %s\n", request_path);
-	//int path_len = strlen(request_path);
+	printf("Request version: %s\n", request_version);
+	//printf("Request host: %s\n", request_host);
+	//printf("Request agent: %s\n", request_agent);
+	
+	// ********** ********** ********** ********** ********** ********** ********** ********** **********
 
 	// Check if path is valid
 	if (strcmp(request_path, "/") == 0) {
@@ -101,6 +113,29 @@ int parseRequest(int client_fd, char* request) {
 		char *echo_response = request_path + 6;
 		int response_len = strlen(echo_response);
 		sprintf(response, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", response_len, echo_response);
+		sendResponse(client_fd, response);
+	}
+	if (strncmp(request_path, "/user-agent", 11) == 0) {
+		// User-Agent
+		printf("User-Agent path\n");
+		// Extract what comes after "User-Agent"
+    	char *line = strtok(NULL, "\r\n"); // Start tokenizing lines
+    	char *user_agent = NULL;
+
+    	// Loop through the headers to find User-Agent
+		while (line != NULL) {
+			if (strncmp(line, "User-Agent:", 11) == 0) {
+				user_agent = strchr(line, ':');
+				if (user_agent != NULL) {
+					user_agent += 2; // Skip ": "
+					break;
+				}
+			}
+			line = strtok(NULL, "\r\n");
+		}
+		int response_len = strlen(user_agent);
+		sprintf(response, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", response_len, user_agent);
+		printf("**********\n%s", response);
 		sendResponse(client_fd, response);
 	}
 	else {
