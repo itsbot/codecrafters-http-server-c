@@ -6,6 +6,7 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#include <pthread.h>
 
 #define BUFFER_SIZE 1024
 // Response strings
@@ -14,7 +15,7 @@ const char *RESPONSE_404 = "HTTP/1.1 404 Not Found\r\n\r\n";
 char response[BUFFER_SIZE]; // Response buffer
 
 // Function prototypes
-int handleClient(int client_fd);
+void *handleClient(void *arg);
 int parseRequest(int client_fd, char* request);
 void sendResponse(int client_fd, const char* response);
 
@@ -59,29 +60,36 @@ int main() {
 	printf("Waiting for a client to connect...\n");
 	client_addr_len = sizeof(client_addr);
 	
-	int client_fd = accept(server_fd, (struct sockaddr *) &client_addr, &client_addr_len);
-	printf("Client connected\n");
+	while (1) {
+		int client_fd = accept(server_fd, (struct sockaddr *) &client_addr, &client_addr_len);
+		printf("Client connected\n");
 
-	// Call handleClient to handle the client request
-	// Return client_fd and request to parseRequest
-	handleClient(client_fd);
+		// Create a new thread to handle the client request
+		pthread_t thread;
+		int *pclient_socket = &client_fd;
+		// Return client_fd and request to parseRequest
+		pthread_create(&thread, NULL, handleClient, pclient_socket);
+	}
 
 	close(server_fd);
 	return 0;
 }
 
-int handleClient(int client_fd) {
+void *handleClient(void *arg) {
+	int client_fd = *(int *)arg;
 	char request[BUFFER_SIZE];
 	int bytesReceived = recv(client_fd, request, BUFFER_SIZE - 1, 0);
 	if (bytesReceived == -1) {
 		printf("Receive failed: %s\n", strerror(errno));
-		return -1;
+		return NULL;
 	}
 	request[bytesReceived] = '\0';
 	printf("********************\n");
 	printf("Received request:\n%s", request);
 	printf("********************\n");
-	return parseRequest(client_fd, request);
+	parseRequest(client_fd, request);
+	close(client_fd);
+	return NULL;
 }
 
 int parseRequest(int client_fd, char* request) {
