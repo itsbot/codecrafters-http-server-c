@@ -7,19 +7,25 @@
 #include <errno.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <sys/stat.h>
 
 #define BUFFER_SIZE 1024
 // Response strings
 const char *RESPONSE_200 = "HTTP/1.1 200 OK\r\n\r\n";
+const char *RESPONSE_400 = "HTTP/1.1 404 Bad Request\r\n\r\n";
 const char *RESPONSE_404 = "HTTP/1.1 404 Not Found\r\n\r\n";
 char response[BUFFER_SIZE]; // Response buffer
+char *servedDirectory = NULL;
 
 // Function prototypes
 void *handleClient(void *arg);
 int parseRequest(int client_fd, char* request);
 void sendResponse(int client_fd, const char* response);
 
-int main() {
+int main(int argc, char **argv) {
+  if (argc >= 2 && (strncmp(argv[1], "--directory", 11) == 0)) {
+    servedDirectory = argv[2];
+  }
 	// Disable output buffering
 	setbuf(stdout, NULL);
  	setbuf(stderr, NULL);
@@ -67,7 +73,6 @@ int main() {
 		// Create a new thread to handle the client request
 		pthread_t thread;
 		int *pclient_socket = &client_fd;
-		// Return client_fd and request to parseRequest
 		pthread_create(&thread, NULL, handleClient, pclient_socket);
 	}
 
@@ -97,14 +102,10 @@ int parseRequest(int client_fd, char* request) {
 	char *request_method = strtok(request, " ");
 	char *request_path = strtok(NULL, " ");
 	char *request_version = strtok(NULL, "\r\n");
-	//char *request_host = strtok(NULL, "\r\n");
-	//char *request_agent = strtok(NULL, "\r\n");
-	//request_path = strtok(NULL, "\r\n");
+
 	printf("Request method: %s\n", request_method);
 	printf("Request path: %s\n", request_path);
 	printf("Request version: %s\n", request_version);
-	//printf("Request host: %s\n", request_host);
-	//printf("Request agent: %s\n", request_agent);
 	
 	// ********** ********** ********** ********** ********** ********** ********** ********** **********
 
@@ -146,6 +147,30 @@ int parseRequest(int client_fd, char* request) {
 		printf("**********\n%s", response);
 		sendResponse(client_fd, response);
 	}
+    if (strncmp(request_path, "/files/", 7) == 0) {
+        char *file = strchr(request_path + 1, '/');
+        printf("File path: %s\n", file);
+		if (file != NULL) {
+			char *filepath = strcat(servedDirectory, file);
+			FILE *fp = fopen(filepath, "r");
+			printf("File Pointer: %p\n", fp);
+			if (fp != NULL) {
+				char *buffer[BUFFER_SIZE] = {0};
+				int bytes_read = fread(buffer, 1, BUFFER_SIZE, fp);
+
+				if (bytes_read > 0) {
+					int response_len = strlen(buffer);
+					sprintf(response, "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %d\r\n\r\n%s", response_len, buffer);
+					printf("**********\n%s", response);
+					sendResponse(client_fd, response);
+				}
+			}
+			else {
+				printf("File not found\n");
+				sendResponse(client_fd, RESPONSE_404);
+			}
+		}
+    } 
 	else {
 		// invalid
 		printf("Invalid path\n");
