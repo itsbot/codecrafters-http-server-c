@@ -12,6 +12,7 @@
 #define BUFFER_SIZE 1024
 // Response strings
 const char *RESPONSE_200 = "HTTP/1.1 200 OK\r\n\r\n";
+const char *RESPONSE_201 = "HTTP/1.1 201 Created\r\n\r\n";
 const char *RESPONSE_400 = "HTTP/1.1 404 Bad Request\r\n\r\n";
 const char *RESPONSE_404 = "HTTP/1.1 404 Not Found\r\n\r\n";
 char response[BUFFER_SIZE]; // Response buffer
@@ -30,8 +31,9 @@ int main(int argc, char **argv) {
 	setbuf(stdout, NULL);
  	setbuf(stderr, NULL);
 	
-	int server_fd, client_addr_len;
+	int server_fd, client_addr_len, connfd;
 	struct sockaddr_in client_addr;
+	pthread_t thread;
 	
 	server_fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (server_fd == -1) {
@@ -66,15 +68,25 @@ int main(int argc, char **argv) {
 	printf("Waiting for a client to connect...\n");
 	client_addr_len = sizeof(client_addr);
 	
-	while (1) {
-		int client_fd = accept(server_fd, (struct sockaddr *) &client_addr, &client_addr_len);
-		printf("Client connected\n");
+	while((connfd = accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t*)&client_addr_len))){
+		printf("Client accepted\n");
+		int *new_sock = malloc(1);
+    	*new_sock = connfd;
+		if( pthread_create( &thread , NULL ,  handleClient , (void*) new_sock) < 0)
+        {
+            perror("could not create thread");
+            return 1;
+        }
 
-		// Create a new thread to handle the client request
-		pthread_t thread;
-		int *pclient_socket = &client_fd;
-		pthread_create(&thread, NULL, handleClient, pclient_socket);
+		printf("Handler assigned\n");
+		pthread_detach(thread);
 	}
+
+	if (connfd < 0)
+    {
+        perror("accept failed");
+        return 1;
+    }
 
 	close(server_fd);
 	return 0;
@@ -82,6 +94,7 @@ int main(int argc, char **argv) {
 
 void *handleClient(void *arg) {
 	int client_fd = *(int *)arg;
+	printf("client_fd: %d\n", client_fd);
 	char request[BUFFER_SIZE];
 	int bytesReceived = recv(client_fd, request, BUFFER_SIZE - 1, 0);
 	if (bytesReceived == -1) {
@@ -106,8 +119,33 @@ int parseRequest(int client_fd, char* request) {
 	printf("Request method: %s\n", request_method);
 	printf("Request path: %s\n", request_path);
 	printf("Request version: %s\n", request_version);
-	
+	//printf("Tester1: %s\n", strtok(NULL, "\r\n"));
+	//printf("Tester2: %s\n", strtok(NULL, "\r\n"));
+	//printf("Tester3: %s\n", strtok(NULL, "\r\n"));
+	//printf("Tester4: %s\n", strtok(NULL, "\r\n"));
+	//printf("Tester5: %s\n", strtok(NULL, "\r\n"));
+	//printf("Tester6: %s\n", strtok(NULL, "\r\n"));
+
 	// ********** ********** ********** ********** ********** ********** ********** ********** **********
+	if (strcmp(request_method, "POST") == 0) {
+		printf("POST request\n");
+		for (int i = 0; i < 3; i++) {	// Magic numbers (I'm so sorry)
+			strtok(NULL, "\r\n");
+		}
+		char *file_data = strtok(NULL, "\r\n");
+		printf("File data: %s\n", file_data);
+		if (strncmp(request_path, "/files/", 7) == 0) {
+			char *file = strchr(request_path + 1, '/');
+			printf("File path: %s\n", file);	
+			char *filepath = strcat(servedDirectory, file);
+			FILE *fp = fopen(filepath, "w");
+			fprintf(fp, "%s", file_data);
+			printf("File %s written with data %s\n", filepath, file_data);
+			fclose(fp);	
+			sendResponse(client_fd, RESPONSE_201);
+			return 0;
+		}
+	}
 
 	// Check if path is valid
 	if (strcmp(request_path, "/") == 0) {
@@ -182,4 +220,5 @@ int parseRequest(int client_fd, char* request) {
 
 void sendResponse(int client_fd, const char* response) {
 	send(client_fd, response, strlen(response), 0);
+	pthread_exit(client_fd);
 }
